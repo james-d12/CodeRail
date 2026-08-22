@@ -62,6 +62,46 @@ public class ValidationProfileLoaderTests
         Assert.Throws<FileNotFoundException>(() => ValidationProfileLoader.LoadFromFile(Path.Combine(Path.GetTempPath(), "does-not-exist.yml")));
     }
 
+    // The example profiles under examples/profiles/ (docs §13/§14's fast/medium/thorough tiers)
+    // are documentation, not compiled code - these are a smoke test against YAML/key-name typos,
+    // copied to ExampleProfiles/ in the test output by CodeRail.Core.Tests.csproj.
+    [Theory]
+    [InlineData("dotnet-fast.yml", "dotnet-fast", new[] { "build", "test", "codeguard" })]
+    [InlineData("dotnet-medium.yml", "dotnet-medium", new[] { "build", "test", "codeguard", "coverage", "sonar" })]
+    [InlineData("dotnet-thorough.yml", "dotnet-thorough", new[] { "build", "test", "codeguard", "coverage", "sonar", "stryker" })]
+    public void LoadFromFile_ParsesEachExampleProfile(string fileName, string expectedName, string[] expectedSteps)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "ExampleProfiles", fileName);
+
+        var profile = ValidationProfileLoader.LoadFromFile(path);
+
+        Assert.Equal(expectedName, profile.Profile);
+        Assert.Equal(expectedSteps, profile.Validation);
+    }
+
+    [Fact]
+    public void LoadFromFile_ParsesSonarAndMutationThresholds_FromTheMediumExampleProfile()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "ExampleProfiles", "dotnet-medium.yml");
+
+        var profile = ValidationProfileLoader.LoadFromFile(path);
+
+        Assert.Equal("your-org_your-project", profile.Quality.Sonar.ProjectKey);
+        Assert.Equal(0, profile.Quality.Sonar.NewBlocker);
+        Assert.Equal(0, profile.Quality.Sonar.NewCritical);
+        Assert.Equal(80, profile.Quality.Coverage.Minimum);
+    }
+
+    [Fact]
+    public void LoadFromFile_ParsesMutationThreshold_FromTheThoroughExampleProfile()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "ExampleProfiles", "dotnet-thorough.yml");
+
+        var profile = ValidationProfileLoader.LoadFromFile(path);
+
+        Assert.Equal(70, profile.Quality.Mutation.Minimum);
+    }
+
     private static string WriteTempYaml(string content)
     {
         var path = Path.Combine(Path.GetTempPath(), $"coderail-profile-{Guid.NewGuid():N}.yml");

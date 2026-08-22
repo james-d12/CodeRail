@@ -24,4 +24,9 @@ public interface IToolExecutor
 /// <param name="Changes">The resolved changed-code set (docs §12), when the caller supplied a
 /// <c>--base-ref</c>. Null means changed-code awareness is off - every existing executor ignores
 /// this and evaluates the whole repository, which stays the default behaviour.</param>
-public sealed record ToolContext(string RepoRoot, IReadOnlyList<string> SolutionPaths, ChangeSet? Changes = null);
+/// <param name="Sonar">Sonar server connection details (docs §9.6), resolved from the validation
+/// profile's <c>quality.sonar.projectKey</c>. Null means <c>SonarExecutor</c> has nothing to
+/// connect to and degrades to <see cref="ValidationStatus.PartiallyEvaluated"/> - every other
+/// executor ignores this field.</param>
+public sealed record ToolContext(
+    string RepoRoot, IReadOnlyList<string> SolutionPaths, ChangeSet? Changes = null, SonarConfig? Sonar = null);

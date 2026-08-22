@@ -12,4 +12,6 @@ public static class ToolIds
     public const string DotnetTest = "dotnet-test";
     public const string CodeGuard = "codeguard";
     public const string Coverage = "coverage";
+    public const string Stryker = "stryker";
+    public const string Sonar = "sonar";
 }

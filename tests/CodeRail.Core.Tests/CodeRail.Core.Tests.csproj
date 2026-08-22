@@ -40,4 +40,11 @@
     <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The example profiles under examples/profiles/ are documentation, not compiled code, but
+         ValidationProfileLoaderTests parses each one as a smoke test against YAML/key-name typos -
+         copy them to the test output the same way Fixtures/ is copied above. -->
+    <None Include="..\..\examples\profiles\**" LinkBase="ExampleProfiles" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

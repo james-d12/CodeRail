@@ -1,0 +1,31 @@
+# Example "final validation" profile (docs/HIGH_LEVEL_PLAN.md §14) - everything from the medium
+# loop plus Stryker mutation testing, the most expensive step CodeRail runs (it re-executes the
+# test suite once per surviving-mutant candidate). Intended for a final gate before merge, not a
+# per-iteration repair-loop check.
+#
+# Usage: CODERAIL_SONAR_TOKEN=<token> coderail validate --profile examples/profiles/dotnet-thorough.yml
+
+profile: dotnet-thorough
+
+validation:
+  - build
+  - test
+  - codeguard
+  - coverage
+  - sonar
+  - stryker
+
+quality:
+  test:
+    allowFailures: 0
+  codeGuard:
+    errorCount: 0
+    criticalCount: 0
+  coverage:
+    minimum: 80
+  sonar:
+    projectKey: "your-org_your-project" # replace with your actual Sonar project key
+    newBlocker: 0
+    newCritical: 0
+  mutation:
+    minimum: 70

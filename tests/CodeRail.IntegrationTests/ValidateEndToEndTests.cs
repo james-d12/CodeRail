@@ -30,6 +30,17 @@ public class ValidateEndToEndTests
     }
 
     [Fact]
+    public async Task Validate_WithSarifFormat_ProducesAValidSarifDocument()
+    {
+        var (exitCode, output) = await RunAsync("AllPass", "no-codeguard.yml", format: "sarif");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("\"$schema\":", output);
+        Assert.Contains("\"version\": \"2.1.0\"", output);
+        Assert.Contains("\"CodeRail\"", output);
+    }
+
+    [Fact]
     public async Task Validate_AgainstABrokenBuild_ShortCircuits_AndNeverRunsTest()
     {
         var (exitCode, output) = await RunAsync("BuildFailure", "build-test-only.yml");
@@ -61,7 +72,7 @@ public class ValidateEndToEndTests
         Assert.Contains("\"type\": \"coverage-below-threshold\"", output);
     }
 
-    private static async Task<(int ExitCode, string Output)> RunAsync(string fixtureName, string profileFileName)
+    private static async Task<(int ExitCode, string Output)> RunAsync(string fixtureName, string profileFileName, string format = "json")
     {
         var path = Path.Combine(FixturesRoot, fixtureName);
         var profilePath = Path.Combine(ProfilesRoot, profileFileName);
@@ -74,7 +85,7 @@ public class ValidateEndToEndTests
         try
         {
             var exitCode = await ValidateCommand.Build()
-                .Parse(["--path", path, "--profile", profilePath, "--format", "json", "--verbosity", "error"])
+                .Parse(["--path", path, "--profile", profilePath, "--format", format, "--verbosity", "error"])
                 .InvokeAsync();
             return (exitCode, outWriter.ToString());
         }

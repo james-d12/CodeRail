@@ -1,0 +1,33 @@
+# Example "medium loop" profile (docs/HIGH_LEVEL_PLAN.md §14) - adds coverage and Sonar on top of
+# the fast loop. Coverage is local/cheap; Sonar involves a remote analysis round-trip, so this tier
+# is meant for less frequent checkpoints than the fast loop (e.g. before opening a PR), not every
+# single AI repair iteration.
+#
+# Sonar requires quality.sonar.projectKey below to be set to your actual Sonar project key, and the
+# CODERAIL_SONAR_TOKEN environment variable to be set to a valid Sonar token - never put the token
+# itself in this file. Without both, the sonar step degrades to "partially evaluated" rather than
+# blocking the gate (an environment/config gap isn't the same as an actual code defect).
+#
+# Usage: CODERAIL_SONAR_TOKEN=<token> coderail validate --profile examples/profiles/dotnet-medium.yml
+
+profile: dotnet-medium
+
+validation:
+  - build
+  - test
+  - codeguard
+  - coverage
+  - sonar
+
+quality:
+  test:
+    allowFailures: 0
+  codeGuard:
+    errorCount: 0
+    criticalCount: 0
+  coverage:
+    minimum: 80
+  sonar:
+    projectKey: "your-org_your-project" # replace with your actual Sonar project key
+    newBlocker: 0
+    newCritical: 0

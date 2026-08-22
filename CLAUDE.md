@@ -55,10 +55,12 @@ project should be a "move files + fix csproj" operation, not a redesign.
 CodeRail.Execution            IProcessRunner / ProcessRunner / ProcessResult (docs §8) - the one
                                execution abstraction every executor goes through
 CodeRail.Tooling               IToolExecutor / ToolContext / SolutionFileLocator (docs §7) /
-                                GitChangeResolver / ChangeSet (docs §12, changed-code awareness)
+                                GitChangeResolver / ChangeSet (docs §12, changed-code awareness) /
+                                SonarConfig
 CodeRail.Tooling.Executors     DotnetBuildExecutor, DotnetTestExecutor, CodeGuardExecutor,
-                                CoverageExecutor
-CodeRail.Tooling.Parsing       TrxParser, CoberturaParser, CodeGuardJsonParser
+                                CoverageExecutor, StrykerExecutor, SonarExecutor
+CodeRail.Tooling.Parsing       TrxParser, CoberturaParser, CodeGuardJsonParser, StrykerJsonParser,
+                                SonarIssuesParser
 CodeRail.Policy                QualityProfile, GateResult, PolicyEvaluator (docs §11) - pure,
                                 no I/O; turns ToolResults + thresholds into a GateResult
 CodeRail.Configuration          ValidationProfile, ValidationProfileLoader (docs §13) - YAML via
@@ -66,7 +68,7 @@ CodeRail.Configuration          ValidationProfile, ValidationProfileLoader (docs
                                 Configuration/Profiles/dotnet-default.yml
 CodeRail.Engine                 ValidationEngine (docs §6.1) - runs a profile's steps in order,
                                 short-circuits the rest of the pipeline if `build` fails
-CodeRail.Reporting              IGateResultWriter + Console/Json writers (docs §20)
+CodeRail.Reporting              IGateResultWriter + Console/Json/Sarif writers (docs §20)
 ```
 
 Keep this dependency direction: `Policy`/`Configuration`/`Engine`/`Reporting` may reference
@@ -79,8 +81,8 @@ Keep this dependency direction: `Policy`/`Configuration`/`Engine`/`Reporting` ma
 `.sln`/`.slnx` files under `--path` → `ValidationEngine.RunAsync` runs each profile step's
 `IToolExecutor` in order, short-circuiting the remaining steps if `build` fails →
 `PolicyEvaluator.Evaluate` turns the collected `ToolResult`s into a `GateResult` →
-`IGateResultWriter` renders it (console/json). Exit code: 0 iff `GateResult.Status == Passed` -
-this *is* the AI repair-loop contract (docs §16); keep it reliable.
+`IGateResultWriter` renders it (console/json/sarif). Exit code: 0 iff `GateResult.Status == Passed`
+- this *is* the AI repair-loop contract (docs §16); keep it reliable.
 
 ### Adding a new executor
 
@@ -93,11 +95,16 @@ dedicated threshold rule for it - otherwise an unrecognized tool id falls back a
 
 ### Scope: which executors exist
 
-Only the four **fast/local** executors from docs §22's MVP list: `build`, `test`, `codeguard`,
-`coverage`. `sonar` and `stryker` are deliberately not implemented yet - both involve a remote API
-/ long-running mutation testing and aren't needed to prove the core orchestration/evidence loop
-(docs §24.6: "prove the execution/evidence model before adding services"). Add them the same way
-as `CodeGuardExecutor`/`CoverageExecutor` when needed.
+All six from docs §22's MVP list now exist: `build`, `test`, `codeguard`, `coverage`, `stryker`,
+`sonar`. `sonar`/`stryker` are deliberately **opt-in forever** - never added to the embedded
+`dotnet-default.yml` profile (mutation testing/remote analysis are docs §14's "final validation"
+tier, too expensive to run on every AI repair iteration). See `examples/profiles/` for
+fast/medium/thorough tier profiles that do include them; a repository opts in the same way, via
+`--profile`. `StrykerExecutor`'s CLI invocation (`dotnet stryker --solution "<path>" --reporter
+Json`) was checked against a real installed `dotnet-stryker`; `SonarExecutor`'s begin/end lifecycle
+was checked against this repo's own working CI invocation, but its Web API polling
+(`report-task.txt`, `api/ce/task`, `api/issues/search`) was not verified against a live server - see
+its type-level remarks if it misbehaves.
 
 ### Known limitations / deliberate simplifications
 

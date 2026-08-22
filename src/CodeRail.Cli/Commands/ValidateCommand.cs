@@ -8,6 +8,7 @@ using CodeRail.Policy;
 using CodeRail.Reporting;
 using CodeRail.Reporting.Console;
 using CodeRail.Reporting.Json;
+using CodeRail.Reporting.Sarif;
 using CodeRail.Tooling;
 using CodeRail.Tooling.Executors;
 using Microsoft.Extensions.Logging;
@@ -24,10 +25,10 @@ public static class ValidateCommand
 
         var formatOption = new Option<string>("--format")
         {
-            Description = "Output format: console or json.",
+            Description = "Output format: console, json, or sarif.",
             DefaultValueFactory = _ => "console"
         };
-        formatOption.AcceptOnlyFromAmong("console", "json");
+        formatOption.AcceptOnlyFromAmong("console", "json", "sarif");
 
         var outputOption = new Option<string?>("--output")
         {
@@ -83,9 +84,14 @@ public static class ValidateCommand
                         "Changed-code awareness enabled against '{BaseRef}': {FileCount} changed file(s)", baseRef, changes.ChangedFiles.Count);
                 }
 
-                var context = new ToolContext(repoRoot, solutionPaths, changes);
+                var sonarConfig = profile.Quality.Sonar.ProjectKey is { } projectKey
+                    ? new SonarConfig(projectKey, profile.Quality.Sonar.Organization, profile.Quality.Sonar.HostUrl)
+                    : null;
 
-                var engine = BuildEngine(loggerFactory, processRunner);
+                var context = new ToolContext(repoRoot, solutionPaths, changes, sonarConfig);
+
+                using var httpClient = new HttpClient();
+                var engine = BuildEngine(loggerFactory, processRunner, httpClient);
                 var gate = await engine.RunAsync(context, profile.Validation, profile.Quality, cancellationToken);
 
                 var writer = CreateWriter(parseResult.GetValue(formatOption)!);
@@ -119,14 +125,16 @@ public static class ValidateCommand
         return command;
     }
 
-    private static ValidationEngine BuildEngine(ILoggerFactory loggerFactory, IProcessRunner processRunner)
+    private static ValidationEngine BuildEngine(ILoggerFactory loggerFactory, IProcessRunner processRunner, HttpClient httpClient)
     {
         var executors = new IToolExecutor[]
         {
             new DotnetBuildExecutor(processRunner, loggerFactory.CreateLogger<DotnetBuildExecutor>()),
             new DotnetTestExecutor(processRunner, loggerFactory.CreateLogger<DotnetTestExecutor>()),
             new CodeGuardExecutor(processRunner, loggerFactory.CreateLogger<CodeGuardExecutor>()),
-            new CoverageExecutor(processRunner, loggerFactory.CreateLogger<CoverageExecutor>())
+            new CoverageExecutor(processRunner, loggerFactory.CreateLogger<CoverageExecutor>()),
+            new StrykerExecutor(processRunner, loggerFactory.CreateLogger<StrykerExecutor>()),
+            new SonarExecutor(processRunner, httpClient, loggerFactory.CreateLogger<SonarExecutor>())
         }.ToDictionary(e => e.Name, e => e);
 
         return new ValidationEngine(executors, new PolicyEvaluator(), loggerFactory.CreateLogger<ValidationEngine>());
@@ -135,6 +143,7 @@ public static class ValidateCommand
     private static IGateResultWriter CreateWriter(string format) => format switch
     {
         "json" => new JsonGateResultWriter(),
+        "sarif" => new SarifGateResultWriter(),
         _ => new ConsoleGateResultWriter()
     };
 }

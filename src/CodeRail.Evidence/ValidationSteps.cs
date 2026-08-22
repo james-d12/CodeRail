@@ -13,4 +13,6 @@ public static class ValidationSteps
     public const string Test = "test";
     public const string CodeGuard = "codeguard";
     public const string Coverage = "coverage";
+    public const string Stryker = "stryker";
+    public const string Sonar = "sonar";
 }

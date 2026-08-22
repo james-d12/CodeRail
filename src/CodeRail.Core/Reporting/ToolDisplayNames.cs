@@ -12,6 +12,8 @@ internal static class ToolDisplayNames
         ToolIds.DotnetTest => "Tests",
         ToolIds.CodeGuard => "CodeGuard",
         ToolIds.Coverage => "Coverage",
+        ToolIds.Stryker => "Stryker",
+        ToolIds.Sonar => "Sonar",
         _ => toolId
     };
 }

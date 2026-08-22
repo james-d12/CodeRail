@@ -49,15 +49,19 @@ public sealed class PolicyEvaluator(TimeProvider? timeProvider = null)
 
         ToolIds.Coverage => CoverageFindings(result, profile.Coverage),
 
-        // Any other tool (e.g. a future Sonar/Stryker executor without a dedicated threshold
-        // yet) falls back to "a failed run blocks".
+        ToolIds.Stryker => MutationFindings(result, profile.Mutation),
+
+        ToolIds.Sonar when BreachesSonarThresholds(result, profile.Sonar) =>
+            result.Findings.Where(f => f.Severity is Severity.Error or Severity.Critical),
+
+        // Any other tool falls back to "a failed run blocks".
         _ when result.Status == ValidationStatus.Failed && !IsKnownToolId(result.Tool) => result.Findings,
 
         _ => []
     };
 
     private static bool IsKnownToolId(string tool) =>
-        tool is ToolIds.DotnetBuild or ToolIds.DotnetTest or ToolIds.CodeGuard or ToolIds.Coverage;
+        tool is ToolIds.DotnetBuild or ToolIds.DotnetTest or ToolIds.CodeGuard or ToolIds.Coverage or ToolIds.Stryker or ToolIds.Sonar;
 
     private static bool BreachesCodeGuardThresholds(ToolResult result, CodeGuardQualityThresholds thresholds)
     {
@@ -83,6 +87,27 @@ public sealed class PolicyEvaluator(TimeProvider? timeProvider = null)
                 "new-code-coverage-below-threshold",
                 Severity.Error,
                 $"New-code line coverage {newCodeActual:0.##}% is below the required minimum {thresholds.NewCodeMinimum:0.##}%.",
+                null, null, null);
+        }
+    }
+
+    // Sonar severities are mapped onto CodeRail's Severity by SonarIssuesParser (BLOCKER->Critical,
+    // CRITICAL->Error, MAJOR/MINOR->Warning, INFO->Info) - same shape as BreachesCodeGuardThresholds.
+    private static bool BreachesSonarThresholds(ToolResult result, SonarQualityThresholds thresholds)
+    {
+        var blockers = result.Findings.Count(f => f.Severity == Severity.Critical);
+        var criticals = result.Findings.Count(f => f.Severity == Severity.Error);
+        return blockers > thresholds.NewBlocker || criticals > thresholds.NewCritical;
+    }
+
+    private static IEnumerable<Finding> MutationFindings(ToolResult result, MutationQualityThresholds thresholds)
+    {
+        if (TryBelowThreshold(result, "mutationScore", thresholds.Minimum, out var actual))
+        {
+            yield return new Finding(
+                "mutation-score-below-threshold",
+                Severity.Error,
+                $"Mutation score {actual:0.##}% is below the required minimum {thresholds.Minimum:0.##}%.",
                 null, null, null);
         }
     }

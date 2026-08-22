@@ -80,11 +80,15 @@ Two things to know about the standalone binaries:
 
 ## Status
 
-MVP. `validate` runs `dotnet build`, `dotnet test`, [CodeGuard](https://github.com/james-d12/CodeGuard),
-and coverage collection against the target repository (skipping any step it has no evidence for -
-e.g. CodeGuard not being installed - rather than crashing), applies a quality profile, and reports
-a pass/fail gate result. Sonar and Stryker executors aren't implemented yet - see
-[`CLAUDE.md`](CLAUDE.md) for the current scope and how to add one.
+`validate` runs `dotnet build`, `dotnet test`, [CodeGuard](https://github.com/james-d12/CodeGuard),
+coverage collection, [SonarCloud/SonarQube](https://www.sonarsource.com/products/sonarcloud/), and
+[Stryker](https://stryker-mutator.io/) mutation testing against the target repository (skipping any
+step it has no evidence for - e.g. CodeGuard not being installed, or Sonar/Stryker not configured -
+rather than crashing), applies a quality profile, and reports a pass/fail gate result. Sonar and
+Stryker are opt-in (see [Example profiles](#example-profiles) below) - the built-in
+`dotnet-default` profile only ever runs build/test/CodeGuard/coverage. `--base-ref` adds
+changed-code-aware coverage thresholds (docs §12) alongside the existing whole-repository ones. See
+[`CLAUDE.md`](CLAUDE.md) for the current architecture and known limitations.
 
 ## CLI usage
 
@@ -93,15 +97,20 @@ this repo, use `dotnet run --project src/CodeRail.Cli -- <command>` instead.
 
 | Command | Description |
 |---|---|
-| `validate` | Run the validation pipeline (build, test, CodeGuard, coverage) against a repository and report a pass/fail quality gate |
+| `validate` | Run the validation pipeline against a repository and report a pass/fail quality gate |
 
 | Option | Meaning |
 |---|---|
 | `--path` | Repository root to validate (default: current directory) |
 | `--profile` | Path to a validation profile YAML file (default: the built-in `dotnet-default` profile) |
-| `--format` | `console` (default) or `json` |
+| `--format` | `console` (default), `json`, or `sarif` |
 | `--output` | File to write the report to (default: stdout) |
+| `--base-ref` | Git ref to diff against for changed-code-aware coverage thresholds (docs §12), e.g. `origin/main`. Default: off - only whole-repository thresholds are evaluated |
 | `--verbosity` | Minimum log level written to stderr: `debug`, `information` (default), `warning`, `error`, `critical` |
+
+Sonar needs the `CODERAIL_SONAR_TOKEN` environment variable set to a valid Sonar token - never pass
+it as a CLI flag or put it in a profile file. Everything else Sonar needs (project key,
+organization, host URL) lives in the profile's `quality.sonar` block.
 
 Examples (installed tool):
 
@@ -171,9 +180,28 @@ doesn't block the gate on its own:
 | `test.allowFailures` | Number of failing tests tolerated | `0` - any failure blocks |
 | `codeGuard.errorCount` | Number of CodeGuard error-severity findings tolerated | `0` |
 | `codeGuard.criticalCount` | Number of CodeGuard critical-severity findings tolerated | `0` |
-| `coverage.minimum` | Minimum required line coverage percentage (0-100) | not enforced - the number is still reported |
+| `coverage.minimum` | Minimum required whole-repository line coverage percentage (0-100) | not enforced - the number is still reported |
+| `coverage.newCodeMinimum` | Minimum required line coverage percentage restricted to changed code, only evaluated with `--base-ref` (docs §12) | not enforced |
+| `sonar.projectKey` | Sonar project key - required to actually run the `sonar` step | step degrades to "partially evaluated" |
+| `sonar.organization` | SonarCloud organization key | omit for self-hosted SonarQube |
+| `sonar.hostUrl` | Self-hosted SonarQube server URL | defaults to SonarCloud |
+| `sonar.newBlocker` / `sonar.newCritical` | Number of new BLOCKER/CRITICAL-severity Sonar issues tolerated | `0` - any new blocker/critical blocks |
+| `mutation.minimum` | Minimum required Stryker mutation score percentage (0-100) | not enforced |
 
 Point `coderail validate` at a custom profile with `--profile my-profile.yml`.
+
+### Example profiles
+
+[`examples/profiles/`](examples/profiles) has three example profiles matching docs §14's
+fast/medium/expensive validation tiers - `dotnet-fast.yml` (build/test/CodeGuard, for every AI
+repair iteration), `dotnet-medium.yml` (adds coverage and Sonar, for less frequent checkpoints),
+and `dotnet-thorough.yml` (adds Stryker, for a final pre-merge gate). There's no built-in "tier"
+concept in the CLI - each is just a normal profile file, selected via `--profile`:
+
+```bash
+coderail validate --profile examples/profiles/dotnet-fast.yml
+CODERAIL_SONAR_TOKEN=<token> coderail validate --profile examples/profiles/dotnet-thorough.yml
+```
 
 ## Building
 

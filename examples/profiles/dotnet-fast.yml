@@ -1,0 +1,19 @@
+# Example "fast loop" profile (docs/HIGH_LEVEL_PLAN.md §14) - build/test/CodeGuard only. Intended
+# to run after every AI agent iteration: cheap enough to not slow down the repair loop, while still
+# catching compile errors, test failures, and CodeGuard rule violations immediately.
+#
+# Usage: coderail validate --profile examples/profiles/dotnet-fast.yml
+
+profile: dotnet-fast
+
+validation:
+  - build
+  - test
+  - codeguard
+
+quality:
+  test:
+    allowFailures: 0
+  codeGuard:
+    errorCount: 0
+    criticalCount: 0
