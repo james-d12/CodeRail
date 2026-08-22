@@ -34,11 +34,19 @@ public static class ValidateCommand
             Description = "File to write the report to (default: stdout)."
         };
 
+        var baseRefOption = new Option<string?>("--base-ref")
+        {
+            Description = "Git ref to diff against for changed-code-aware thresholds (docs §12), " +
+                "e.g. 'origin/main'. Default: changed-code awareness is off - only whole-repository " +
+                "thresholds are evaluated."
+        };
+
         var command = new Command("validate", "Run the validation pipeline and report a pass/fail quality gate");
         command.Add(pathOption);
         command.Add(profileOption);
         command.Add(formatOption);
         command.Add(outputOption);
+        command.Add(baseRefOption);
         command.Add(verbosityOption);
 
         command.SetAction(async (parseResult, cancellationToken) =>
@@ -61,10 +69,23 @@ public static class ValidateCommand
                     ? ValidationProfileLoader.LoadDefault()
                     : ValidationProfileLoader.LoadFromFile(profilePath);
 
-                var solutionPaths = SolutionFileLocator.Resolve(repoRoot, [], loggerFactory.CreateLogger(typeof(SolutionFileLocator)));
-                var context = new ToolContext(repoRoot, solutionPaths);
+                var processRunner = new ProcessRunner(loggerFactory.CreateLogger<ProcessRunner>());
 
-                var engine = BuildEngine(loggerFactory);
+                var solutionPaths = SolutionFileLocator.Resolve(repoRoot, [], loggerFactory.CreateLogger(typeof(SolutionFileLocator)));
+
+                ChangeSet? changes = null;
+                var baseRef = parseResult.GetValue(baseRefOption);
+                if (baseRef is not null)
+                {
+                    changes = await GitChangeResolver.ResolveAsync(
+                        processRunner, repoRoot, baseRef, loggerFactory.CreateLogger(typeof(GitChangeResolver)), cancellationToken);
+                    logger.LogInformation(
+                        "Changed-code awareness enabled against '{BaseRef}': {FileCount} changed file(s)", baseRef, changes.ChangedFiles.Count);
+                }
+
+                var context = new ToolContext(repoRoot, solutionPaths, changes);
+
+                var engine = BuildEngine(loggerFactory, processRunner);
                 var gate = await engine.RunAsync(context, profile.Validation, profile.Quality, cancellationToken);
 
                 var writer = CreateWriter(parseResult.GetValue(formatOption)!);
@@ -98,10 +119,8 @@ public static class ValidateCommand
         return command;
     }
 
-    private static ValidationEngine BuildEngine(ILoggerFactory loggerFactory)
+    private static ValidationEngine BuildEngine(ILoggerFactory loggerFactory, IProcessRunner processRunner)
     {
-        var processRunner = new ProcessRunner(loggerFactory.CreateLogger<ProcessRunner>());
-
         var executors = new IToolExecutor[]
         {
             new DotnetBuildExecutor(processRunner, loggerFactory.CreateLogger<DotnetBuildExecutor>()),

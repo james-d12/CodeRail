@@ -54,7 +54,8 @@ project should be a "move files + fix csproj" operation, not a redesign.
 ```
 CodeRail.Execution            IProcessRunner / ProcessRunner / ProcessResult (docs §8) - the one
                                execution abstraction every executor goes through
-CodeRail.Tooling               IToolExecutor / ToolContext / SolutionFileLocator (docs §7)
+CodeRail.Tooling               IToolExecutor / ToolContext / SolutionFileLocator (docs §7) /
+                                GitChangeResolver / ChangeSet (docs §12, changed-code awareness)
 CodeRail.Tooling.Executors     DotnetBuildExecutor, DotnetTestExecutor, CodeGuardExecutor,
                                 CoverageExecutor
 CodeRail.Tooling.Parsing       TrxParser, CoberturaParser, CodeGuardJsonParser
@@ -100,10 +101,13 @@ as `CodeGuardExecutor`/`CoverageExecutor` when needed.
 
 ### Known limitations / deliberate simplifications
 
-- **No changed-code awareness** (docs §12). `QualityProfile` thresholds are always
-  whole-repository, never "new code only" - needs a `git diff`-based changed-file/changed-project
-  resolver that doesn't exist yet. This is the next major feature once the whole-repo gate is
-  proven.
+- **Changed-code awareness is partial** (docs §12). `coderail validate --base-ref <ref>` resolves a
+  `ChangeSet` via `GitChangeResolver` (`git merge-base` + a union of committed/staged/working-tree
+  `git diff`s - untracked-but-unadded files are a known gap, see its doc-comment) and only
+  `CoverageExecutor`/`CoverageQualityThresholds.NewCodeMinimum` consume it so far, reporting a
+  `newCodeLineCoverage` metric alongside the existing whole-repository one. `Minimum` and
+  `NewCodeMinimum` are evaluated independently in `PolicyEvaluator`. Extending the same
+  `ToolContext.Changes` to CodeGuard/Sonar/Stryker findings ("new issues only") is still open.
 - **Executors self-restore/self-build.** `DotnetBuildExecutor`/`DotnetTestExecutor`/
   `CoverageExecutor` run a plain `dotnet build`/`dotnet test` (implicit restore), not the design
   doc's illustrative `--no-restore`/`--no-build` - CodeRail validates arbitrary target

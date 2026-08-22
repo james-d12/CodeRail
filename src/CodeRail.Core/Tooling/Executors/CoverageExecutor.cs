@@ -8,7 +8,9 @@ namespace CodeRail.Tooling.Executors;
 /// <summary>
 /// Runs <c>dotnet test --collect:"XPlat Code Coverage"</c> against each of the context's
 /// solutions and aggregates the resulting Cobertura report(s) into line/branch coverage metrics.
-/// See <c>docs/HIGH_LEVEL_PLAN.md</c> §9.3.
+/// See <c>docs/HIGH_LEVEL_PLAN.md</c> §9.3. When <see cref="ToolContext.Changes"/> is set, also
+/// reports a <c>newCodeLineCoverage</c> metric restricted to the changed files (§12), by matching
+/// each Cobertura report's per-file line coverage against <see cref="ChangeSet.ChangedFiles"/>.
 /// </summary>
 /// <remarks>
 /// Whether a number is "good enough" is a policy decision, not this executor's - see
@@ -30,6 +32,10 @@ public sealed class CoverageExecutor(IProcessRunner processRunner, ILogger<Cover
         var totalDuration = TimeSpan.Zero;
         double linesCovered = 0, linesValid = 0, branchesCovered = 0, branchesValid = 0;
         var anyReportFound = false;
+
+        // Only accumulated when context.Changes is set (docs §12) - per-file breakdown isn't
+        // needed for the whole-repository metrics above, so skip the extra parsing otherwise.
+        var perFileTotals = new Dictionary<string, (double Covered, double Valid)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var target in targets)
         {
@@ -56,6 +62,16 @@ public sealed class CoverageExecutor(IProcessRunner processRunner, ILogger<Cover
                     linesValid += summary.LinesValid;
                     branchesCovered += summary.BranchesCovered;
                     branchesValid += summary.BranchesValid;
+
+                    if (context.Changes is not null)
+                    {
+                        foreach (var fileCoverage in CoberturaParser.ParsePerFile(reportFile))
+                        {
+                            var key = NormalizePath(fileCoverage.FileName, context.RepoRoot);
+                            var existing = perFileTotals.TryGetValue(key, out var accumulated) ? accumulated : (0, 0);
+                            perFileTotals[key] = (existing.Covered + fileCoverage.LinesCovered, existing.Valid + fileCoverage.LinesValid);
+                        }
+                    }
                 }
             }
             finally
@@ -88,8 +104,38 @@ public sealed class CoverageExecutor(IProcessRunner processRunner, ILogger<Cover
             metrics["branchCoverage"] = Math.Round(branchesCovered / branchesValid * 100, 2);
         }
 
+        if (context.Changes is { ChangedFiles.Count: > 0 })
+        {
+            var (newCodeCovered, newCodeValid) = SumChangedFileCoverage(perFileTotals, context.Changes.ChangedFiles, context.RepoRoot);
+            if (newCodeValid > 0)
+            {
+                metrics["newCodeLineCoverage"] = Math.Round(newCodeCovered / newCodeValid * 100, 2);
+            }
+        }
+
         return new ToolResult(ToolIds.Coverage, ValidationStatus.Passed, [], metrics, [], totalDuration);
     }
+
+    private static (double Covered, double Valid) SumChangedFileCoverage(
+        IReadOnlyDictionary<string, (double Covered, double Valid)> perFileTotals, IReadOnlyList<string> changedFiles, string repoRoot)
+    {
+        double covered = 0, valid = 0;
+        foreach (var changedFile in changedFiles)
+        {
+            if (perFileTotals.TryGetValue(NormalizePath(changedFile, repoRoot), out var fileCoverage))
+            {
+                covered += fileCoverage.Covered;
+                valid += fileCoverage.Valid;
+            }
+        }
+
+        return (covered, valid);
+    }
+
+    /// <summary>Cobertura <c>filename</c> attributes and git's repo-root-relative diff paths need
+    /// a common form to compare - resolve both to a full, OS-normalized path.</summary>
+    private static string NormalizePath(string path, string repoRoot) =>
+        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(repoRoot, path));
 
     private static void TryDelete(string directory)
     {

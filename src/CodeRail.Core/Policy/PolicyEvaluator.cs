@@ -5,8 +5,10 @@ namespace CodeRail.Policy;
 /// <summary>
 /// Turns a set of raw <see cref="ToolResult"/>s into a single <see cref="GateResult"/> by
 /// applying a <see cref="QualityProfile"/>'s thresholds - a pure function with no I/O, per
-/// <c>docs/HIGH_LEVEL_PLAN.md</c> §24.3 ("policy is separate from execution"). Deliberately
-/// whole-repository, not changed-code-aware (§12) - see <see cref="CoverageQualityThresholds"/>.
+/// <c>docs/HIGH_LEVEL_PLAN.md</c> §24.3 ("policy is separate from execution"). Whole-repository
+/// thresholds (<see cref="CoverageQualityThresholds.Minimum"/>) and changed-code thresholds
+/// (<see cref="CoverageQualityThresholds.NewCodeMinimum"/>, §12) are evaluated independently -
+/// either can produce a blocking finding on its own.
 /// </summary>
 public sealed class PolicyEvaluator(TimeProvider? timeProvider = null)
 {
@@ -45,7 +47,7 @@ public sealed class PolicyEvaluator(TimeProvider? timeProvider = null)
         ToolIds.CodeGuard when BreachesCodeGuardThresholds(result, profile.CodeGuard) =>
             result.Findings.Where(f => f.Severity is Severity.Error or Severity.Critical),
 
-        ToolIds.Coverage when BelowCoverageThreshold(result, profile.Coverage, out var finding) => [finding],
+        ToolIds.Coverage => CoverageFindings(result, profile.Coverage),
 
         // Any other tool (e.g. a future Sonar/Stryker executor without a dedicated threshold
         // yet) falls back to "a failed run blocks".
@@ -64,20 +66,31 @@ public sealed class PolicyEvaluator(TimeProvider? timeProvider = null)
         return errors > thresholds.ErrorCount || criticals > thresholds.CriticalCount;
     }
 
-    private static bool BelowCoverageThreshold(ToolResult result, CoverageQualityThresholds thresholds, out Finding finding)
+    private static IEnumerable<Finding> CoverageFindings(ToolResult result, CoverageQualityThresholds thresholds)
     {
-        finding = null!;
-        if (thresholds.Minimum is not { } minimum || !TryReadDouble(result, "lineCoverage", out var actual) || actual >= minimum)
+        if (TryBelowThreshold(result, "lineCoverage", thresholds.Minimum, out var actual))
         {
-            return false;
+            yield return new Finding(
+                "coverage-below-threshold",
+                Severity.Error,
+                $"Line coverage {actual:0.##}% is below the required minimum {thresholds.Minimum:0.##}%.",
+                null, null, null);
         }
 
-        finding = new Finding(
-            "coverage-below-threshold",
-            Severity.Error,
-            $"Line coverage {actual:0.##}% is below the required minimum {minimum:0.##}%.",
-            null, null, null);
-        return true;
+        if (TryBelowThreshold(result, "newCodeLineCoverage", thresholds.NewCodeMinimum, out var newCodeActual))
+        {
+            yield return new Finding(
+                "new-code-coverage-below-threshold",
+                Severity.Error,
+                $"New-code line coverage {newCodeActual:0.##}% is below the required minimum {thresholds.NewCodeMinimum:0.##}%.",
+                null, null, null);
+        }
+    }
+
+    private static bool TryBelowThreshold(ToolResult result, string metricKey, double? minimum, out double actual)
+    {
+        actual = 0;
+        return minimum is { } m && TryReadDouble(result, metricKey, out actual) && actual < m;
     }
 
     private static int ReadInt(ToolResult result, string key) =>

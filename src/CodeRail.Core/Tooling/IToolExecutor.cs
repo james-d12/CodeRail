@@ -21,4 +21,7 @@ public interface IToolExecutor
 /// <param name="RepoRoot">Root directory of the repository being validated.</param>
 /// <param name="SolutionPaths">Explicit .sln/.slnx paths to target. Empty means "let the
 /// underlying tool auto-discover the solution/project in <paramref name="RepoRoot"/>".</param>
-public sealed record ToolContext(string RepoRoot, IReadOnlyList<string> SolutionPaths);
+/// <param name="Changes">The resolved changed-code set (docs §12), when the caller supplied a
+/// <c>--base-ref</c>. Null means changed-code awareness is off - every existing executor ignores
+/// this and evaluates the whole repository, which stays the default behaviour.</param>
+public sealed record ToolContext(string RepoRoot, IReadOnlyList<string> SolutionPaths, ChangeSet? Changes = null);

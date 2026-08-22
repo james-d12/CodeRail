@@ -34,6 +34,83 @@ public class CoberturaParserTests
         Assert.Equal(0, summary.LinesValid);
     }
 
+    [Fact]
+    public void ParsePerFile_ReadsLineCoverage_PerClassFilename()
+    {
+        const string cobertura = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <coverage version="1.9" timestamp="0">
+              <packages>
+                <package name="Lib">
+                  <classes>
+                    <class name="Lib.Calculator" filename="Lib/Calculator.cs">
+                      <lines>
+                        <line number="5" hits="3" />
+                        <line number="6" hits="0" />
+                        <line number="7" hits="1" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+        var path = WriteTempCobertura(cobertura);
+
+        var files = CoberturaParser.ParsePerFile(path);
+
+        var file = Assert.Single(files);
+        Assert.Equal("Lib/Calculator.cs", file.FileName);
+        Assert.Equal(2, file.LinesCovered);
+        Assert.Equal(3, file.LinesValid);
+    }
+
+    [Fact]
+    public void ParsePerFile_AggregatesMultipleClassesForTheSameFile()
+    {
+        // Partial classes: two <class> elements can point at the same source file.
+        const string cobertura = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <coverage version="1.9" timestamp="0">
+              <packages>
+                <package name="Lib">
+                  <classes>
+                    <class name="Lib.Calculator" filename="Lib/Calculator.cs">
+                      <lines>
+                        <line number="5" hits="1" />
+                      </lines>
+                    </class>
+                    <class name="Lib.Calculator.Nested" filename="Lib/Calculator.cs">
+                      <lines>
+                        <line number="20" hits="0" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+        var path = WriteTempCobertura(cobertura);
+
+        var files = CoberturaParser.ParsePerFile(path);
+
+        var file = Assert.Single(files);
+        Assert.Equal("Lib/Calculator.cs", file.FileName);
+        Assert.Equal(1, file.LinesCovered);
+        Assert.Equal(2, file.LinesValid);
+    }
+
+    [Fact]
+    public void ParsePerFile_ReturnsEmpty_WhenReportHasNoClasses()
+    {
+        const string cobertura = """<coverage version="1.9" timestamp="0"></coverage>""";
+        var path = WriteTempCobertura(cobertura);
+
+        var files = CoberturaParser.ParsePerFile(path);
+
+        Assert.Empty(files);
+    }
+
     private static string WriteTempCobertura(string content)
     {
         var path = Path.Combine(Path.GetTempPath(), $"coderail-cobertura-{Guid.NewGuid():N}.xml");

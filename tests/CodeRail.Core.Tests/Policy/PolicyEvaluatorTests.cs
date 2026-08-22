@@ -122,6 +122,53 @@ public class PolicyEvaluatorTests
     }
 
     [Fact]
+    public void Evaluate_SynthesizesBlockingFinding_WhenNewCodeCoverageBelowMinimum()
+    {
+        var profile = new QualityProfile { Coverage = new CoverageQualityThresholds { NewCodeMinimum = 90 } };
+        var coverage = new ToolResult(
+            ToolIds.Coverage, ValidationStatus.Passed, [], new Dictionary<string, object> { ["newCodeLineCoverage"] = 50.0 }, [], TimeSpan.Zero);
+
+        var gate = new PolicyEvaluator().Evaluate([coverage], profile);
+
+        Assert.Equal(ValidationStatus.Failed, gate.Status);
+        var finding = Assert.Single(gate.BlockingFindings);
+        Assert.Equal("new-code-coverage-below-threshold", finding.Type);
+        Assert.Contains("50", finding.Message);
+        Assert.Contains("90", finding.Message);
+    }
+
+    [Fact]
+    public void Evaluate_EvaluatesWholeRepoAndNewCodeCoverageThresholds_Independently()
+    {
+        // Whole-repo coverage is healthy but new-code coverage on this run is not - only the
+        // new-code finding should block, and vice versa if the numbers were swapped.
+        var profile = new QualityProfile
+        {
+            Coverage = new CoverageQualityThresholds { Minimum = 50, NewCodeMinimum = 90 }
+        };
+        var coverage = new ToolResult(
+            ToolIds.Coverage, ValidationStatus.Passed,
+            [], new Dictionary<string, object> { ["lineCoverage"] = 60.0, ["newCodeLineCoverage"] = 20.0 }, [], TimeSpan.Zero);
+
+        var gate = new PolicyEvaluator().Evaluate([coverage], profile);
+
+        Assert.Equal(ValidationStatus.Failed, gate.Status);
+        var finding = Assert.Single(gate.BlockingFindings);
+        Assert.Equal("new-code-coverage-below-threshold", finding.Type);
+    }
+
+    [Fact]
+    public void Evaluate_IgnoresNewCodeCoverageNumber_WhenNoNewCodeMinimumConfigured()
+    {
+        var coverage = new ToolResult(
+            ToolIds.Coverage, ValidationStatus.Passed, [], new Dictionary<string, object> { ["newCodeLineCoverage"] = 1.0 }, [], TimeSpan.Zero);
+
+        var gate = new PolicyEvaluator().Evaluate([coverage], DefaultProfile);
+
+        Assert.Equal(ValidationStatus.Passed, gate.Status);
+    }
+
+    [Fact]
     public void Evaluate_FallsBackToAnyFailureBlocks_ForUnrecognizedToolIds()
     {
         var finding = new Finding("mutation-survived", Severity.Warning, "survived mutant", "Foo.cs", 5, null);
