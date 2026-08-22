@@ -1,0 +1,12 @@
+# Deliberately omits "codeguard" - see build-test-only.yml. No coverage minimum: coverage is
+# collected as evidence only for this profile.
+profile: no-codeguard
+
+validation:
+  - build
+  - test
+  - coverage
+
+quality:
+  test:
+    allowFailures: 0

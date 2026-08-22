@@ -1,0 +1,156 @@
+name: Publish
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  pack-nuget:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # enable GitHub OIDC token issuance for NuGet Trusted Publishing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer needs full tag history to compute the package version
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore NuGet Packages
+        run: dotnet restore
+
+      - name: Build Solution
+        run: dotnet build --no-restore -c Release
+
+      - name: Run Tests
+        run: dotnet test --no-build -c Release
+
+      - name: Pack CodeRail Tool Package
+        run: dotnet pack src/CodeRail.Cli/CodeRail.Cli.csproj -c Release -o ./nupkg --no-build
+
+      - name: Get Token
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push Package To NuGet.org
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
+      - name: Upload NuGet Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: ./nupkg/*.nupkg
+          if-no-files-found: error
+
+  build-binaries:
+    needs: pack-nuget
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        rid: [linux-x64, linux-arm64, osx-x64, osx-arm64, win-x64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # MinVer needs full tag history to compute the binary's version too
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish Self-Contained Single-File Binary (${{ matrix.rid }})
+        # Unlike CodeGuard, CodeRail never loads MSBuildWorkspace/a BuildHost side-process - it
+        # only ever shells out to `dotnet`/`codeguard` via ProcessRunner - so single-file
+        # publishing has no equivalent "sibling DLL not found" failure mode here.
+        run: |
+          dotnet publish src/CodeRail.Cli/CodeRail.Cli.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:DebugType=None \
+            -o publish/${{ matrix.rid }}
+
+      - name: Smoke Test Binary
+        if: matrix.rid == 'linux-x64'
+        run: |
+          set -euo pipefail
+          ./publish/linux-x64/coderail --help
+
+          # Exercise a full validate run (build/test/coverage against a real fixture) through the
+          # self-contained binary, not just --help.
+          output=$(./publish/linux-x64/coderail validate \
+            --path tests/CodeRail.IntegrationTests/Fixtures/AllPass \
+            --profile tests/CodeRail.IntegrationTests/Profiles/no-codeguard.yml \
+            --format json)
+          echo "$output"
+          echo "$output" | grep -q '"status": "passed"'
+
+      - name: Package Archive
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          rid="${{ matrix.rid }}"
+          mkdir -p dist
+          if [[ "$rid" == win-* ]]; then
+            asset="dist/coderail-${version}-${rid}.zip"
+            (cd "publish/${rid}" && zip -r "${GITHUB_WORKSPACE}/${asset}" .)
+          else
+            asset="dist/coderail-${version}-${rid}.tar.gz"
+            tar -C "publish/${rid}" -czf "$asset" .
+          fi
+          echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coderail-${{ matrix.rid }}
+          path: ${{ env.ASSET_PATH }}
+          if-no-files-found: error
+
+  release:
+    needs: [pack-nuget, build-binaries]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # required for `gh release create`
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download All Release Assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          prerelease_flag=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            prerelease_flag="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes "📦 [CodeRail $version on NuGet.org](https://www.nuget.org/packages/CodeRail/$version)" \
+            --generate-notes \
+            $prerelease_flag

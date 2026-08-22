@@ -1,0 +1,20 @@
+# CodeRail's built-in default profile for .NET repositories.
+# See docs/HIGH_LEVEL_PLAN.md §13 (Validation Profiles) and §22 (MVP).
+#
+# `coverage` is deliberately omitted from `quality:` below - the coverage step still runs and
+# reports the number, but no minimum is enforced until a repository opts in via its own
+# --profile file.
+profile: dotnet-default
+
+validation:
+  - build
+  - test
+  - codeguard
+  - coverage
+
+quality:
+  test:
+    allowFailures: 0
+  codeGuard:
+    errorCount: 0
+    criticalCount: 0

@@ -1,0 +1,14 @@
+<Project>
+
+    <!-- Deliberately shadows the repo root's Directory.Build.props (MSBuild uses the *nearest*
+         Directory.Build.props up the tree, not every one it finds) - these fixtures exist to be
+         built by CodeRail.Tooling.Tests as raw on-disk targets, including one that's supposed to
+         fail to compile, so they must not inherit TreatWarningsAsErrors/strict analysis. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+</Project>

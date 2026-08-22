@@ -1,0 +1,10 @@
+profile: strict-coverage
+
+validation:
+  - build
+  - test
+  - coverage
+
+quality:
+  coverage:
+    minimum: 95

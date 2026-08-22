@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <AssemblyName>coderail</AssemblyName>
+        <IsPublishable>true</IsPublishable>
+    </PropertyGroup>
+
+    <!-- dotnet tool packaging: `dotnet tool install -g CodeRail` installs the `coderail` command. -->
+    <!-- Version is derived from git tags (e.g. v0.1.0) by MinVer below - do not add a <Version> property. -->
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>coderail</ToolCommandName>
+        <PackageId>CodeRail</PackageId>
+        <Description>Deterministic quality-validation and orchestration layer for AI-assisted software development - runs existing engineering tools, normalises their output, and reports a single pass/fail quality gate.</Description>
+        <PackageTags>dotnet-tool;ai-agents;code-quality;validation;ci</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <MinVerTagPrefix>v</MinVerTagPrefix>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\CodeRail.Evidence\CodeRail.Evidence.csproj" />
+        <ProjectReference Include="..\CodeRail.Core\CodeRail.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="System.CommandLine" Version="3.0.0-preview.6.26359.118" />
+      <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="All" />
+      <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.11" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.11" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
+    </ItemGroup>
+
+</Project>

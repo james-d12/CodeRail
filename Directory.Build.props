@@ -1,0 +1,32 @@
+<Project>
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <Features>strict</Features>
+        <IsPublishable>false</IsPublishable>
+        <WarningLevel>4</WarningLevel>
+        <AnalysisMode>Default</AnalysisMode>
+        <NuGetAuditMode>all</NuGetAuditMode>
+        <NuGetAudit>true</NuGetAudit>
+        <NuGetAuditLevel>low</NuGetAuditLevel>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <EnableRoslynAnalyzers>true</EnableRoslynAnalyzers>
+        <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+        <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+        <RunAnalyzersDuringBuildOnly>true</RunAnalyzersDuringBuildOnly>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <IsPackable>false</IsPackable>
+        <Authors>james</Authors>
+        <Copyright>Copyright 2026 james</Copyright>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/james-d12/CodeRail</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/james-d12/CodeRail</RepositoryUrl>
+    </PropertyGroup>
+
+</Project>

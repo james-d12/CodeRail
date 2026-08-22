@@ -1,0 +1,11 @@
+# Deliberately omits "codeguard" - integration tests must stay hermetic regardless of whatever
+# codeguard installation/configuration happens to exist on the machine running them.
+profile: build-test-only
+
+validation:
+  - build
+  - test
+
+quality:
+  test:
+    allowFailures: 0

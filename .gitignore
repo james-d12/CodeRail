@@ -1,0 +1,11 @@
+bin/
+obj/
+/packages/
+/nupkg/
+/artifacts/
+BenchmarkDotNet.Artifacts/
+riderModule.iml
+/_ReSharper.Caches/
+.idea/
+StrykerOutput/
+*.DotSettings.user

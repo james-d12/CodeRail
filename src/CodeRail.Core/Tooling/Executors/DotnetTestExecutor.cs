@@ -1,0 +1,100 @@
+using CodeRail.Evidence;
+using CodeRail.Execution;
+using CodeRail.Tooling.Parsing;
+using Microsoft.Extensions.Logging;
+
+namespace CodeRail.Tooling.Executors;
+
+/// <summary>
+/// Runs <c>dotnet test</c> against each of the context's solutions, parses the resulting TRX
+/// file(s), and converts failures into <see cref="Finding"/>s. See
+/// <c>docs/HIGH_LEVEL_PLAN.md</c> §9.2. See <see cref="DotnetBuildExecutor"/>'s remarks for why
+/// this runs a plain (self-restoring/building) <c>dotnet test</c> rather than <c>--no-build</c>.
+/// </summary>
+public sealed class DotnetTestExecutor(IProcessRunner processRunner, ILogger<DotnetTestExecutor> logger) : IToolExecutor
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(15);
+
+    public string Name => ValidationSteps.Test;
+
+    public async Task<ToolResult> ExecuteAsync(ToolContext context, CancellationToken cancellationToken)
+    {
+        var targets = context.SolutionPaths.Count > 0 ? context.SolutionPaths : [context.RepoRoot];
+        var findings = new List<Finding>();
+        var totalDuration = TimeSpan.Zero;
+        int total = 0, passed = 0, failed = 0, skipped = 0;
+        var infrastructureFailure = false;
+
+        foreach (var target in targets)
+        {
+            var isRepoRoot = target == context.RepoRoot;
+            var resultsDirectory = Directory.CreateTempSubdirectory("coderail-test-").FullName;
+            try
+            {
+                var arguments = (isRepoRoot ? "test" : $"test \"{target}\"") +
+                    $" --logger \"trx;LogFileName=results.trx\" --results-directory \"{resultsDirectory}\"";
+
+                logger.LogInformation("Testing {Target}", target);
+                var result = await processRunner.RunAsync("dotnet", arguments, context.RepoRoot, timeout: Timeout, cancellationToken: cancellationToken);
+                totalDuration += result.Duration;
+
+                var trxFiles = Directory.Exists(resultsDirectory)
+                    ? Directory.EnumerateFiles(resultsDirectory, "*.trx", SearchOption.AllDirectories).ToList()
+                    : [];
+
+                if (trxFiles.Count == 0)
+                {
+                    // No TRX means the run never got as far as executing tests (e.g. a compile
+                    // error) rather than tests genuinely failing - surface it as its own finding
+                    // instead of silently reporting zero tests.
+                    infrastructureFailure = true;
+                    var message = result.TimedOut
+                        ? $"dotnet test timed out after {Timeout}"
+                        : OutputTail.Last(result.StandardOutput + Environment.NewLine + result.StandardError);
+                    findings.Add(new Finding("test-run-failure", Severity.Error, message, isRepoRoot ? null : target, null, null));
+                    continue;
+                }
+
+                foreach (var trxFile in trxFiles)
+                {
+                    var summary = TrxParser.Parse(trxFile);
+                    total += summary.Total;
+                    passed += summary.Passed;
+                    failed += summary.Failed;
+                    skipped += summary.Skipped;
+
+                    foreach (var failure in summary.Failures)
+                    {
+                        var message = failure.ErrorMessage is null ? failure.TestName : $"{failure.TestName}: {failure.ErrorMessage}";
+                        findings.Add(new Finding("test-failure", Severity.Error, message, isRepoRoot ? null : target, null, null));
+                    }
+                }
+            }
+            finally
+            {
+                TryDelete(resultsDirectory);
+            }
+        }
+
+        var status = infrastructureFailure || failed > 0 ? ValidationStatus.Failed : ValidationStatus.Passed;
+        var metrics = new Dictionary<string, object> { ["total"] = total, ["passed"] = passed, ["failed"] = failed, ["skipped"] = skipped };
+
+        return new ToolResult(ToolIds.DotnetTest, status, findings, metrics, [], totalDuration);
+    }
+
+    private static void TryDelete(string directory)
+    {
+        try
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup - leaving a stray temp directory behind isn't worth failing the
+            // whole tool run over.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+}
