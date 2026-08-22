@@ -1,4 +1,14 @@
-# CodeRail
+<p align="center">
+  <img src="Logo.png" alt="CodeRail logo" width="300">
+</p>
+
+<h1 align="center">CodeRail</h1>
+
+<p align="center">
+  <a href="https://github.com/james-d12/CodeRail/actions/workflows/ci.yml"><img src="https://github.com/james-d12/CodeRail/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://www.nuget.org/packages/CodeRail"><img src="https://img.shields.io/nuget/v/CodeRail.svg" alt="NuGet version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+</p>
 
 **CodeRail** is a deterministic quality-validation and orchestration layer for AI-assisted
 software development.
@@ -12,26 +22,158 @@ iteratively repair a change until the quality gate passes, instead of declaring 
 
 See [`docs/HIGH_LEVEL_PLAN.md`](docs/HIGH_LEVEL_PLAN.md) for the full design.
 
+## Installation
+
+The CLI is published to nuget.org as a [.NET tool](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools):
+
+```bash
+dotnet tool install -g CodeRail
+coderail --help
+```
+
+This installs the `coderail` command globally. Every example below works the same whether you run
+it as `coderail <command>` after installing, or as `dotnet run --project src/CodeRail.Cli --
+<command>` from a checkout of this repo.
+
+### Standalone binaries
+
+Each [GitHub Release](https://github.com/james-d12/CodeRail/releases) also publishes
+self-contained, single-file native builds for Linux, macOS and Windows - no .NET SDK/runtime
+install or `dotnet tool install` required just to launch `coderail` itself. These always carry the
+exact same version as that release's NuGet package.
+
+| Platform | Archive |
+|---|---|
+| Linux x64 | `coderail-<version>-linux-x64.tar.gz` |
+| Linux arm64 | `coderail-<version>-linux-arm64.tar.gz` |
+| macOS x64 (Intel) | `coderail-<version>-osx-x64.tar.gz` |
+| macOS arm64 (Apple Silicon) | `coderail-<version>-osx-arm64.tar.gz` |
+| Windows x64 | `coderail-<version>-win-x64.zip` |
+
+Linux/macOS:
+
+```bash
+mkdir coderail && curl -L https://github.com/james-d12/CodeRail/releases/download/v<version>/coderail-<version>-<rid>.tar.gz | tar xz -C coderail
+cd coderail
+./coderail --help
+```
+
+Windows (PowerShell):
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/james-d12/CodeRail/releases/download/v<version>/coderail-<version>-win-x64.zip -OutFile coderail.zip
+Expand-Archive coderail.zip -DestinationPath coderail
+cd coderail
+.\coderail.exe --help
+```
+
+Two things to know about the standalone binaries:
+
+- **macOS Gatekeeper**: the binary isn't code-signed/notarized, so macOS will refuse to run it on
+  first launch ("cannot be opened because the developer cannot be verified"). Clear the quarantine
+  attribute once after downloading: `xattr -d com.apple.quarantine ./coderail`.
+- **`validate` still needs a .NET SDK installed**: `coderail` never loads anything like Roslyn's
+  `MSBuildWorkspace` itself, but every step (`build`, `test`, `coverage`) shells out to a plain
+  `dotnet` on `PATH` via `ProcessRunner` to validate the *target* repository. The self-contained
+  binary removes the need to install the `coderail` tool itself via `dotnet tool install`, but not
+  the underlying .NET SDK dependency for actually validating a .NET repo.
+
 ## Status
 
-MVP — not yet published as a NuGet tool. The CLI surface is a single command:
+MVP. `validate` runs `dotnet build`, `dotnet test`, [CodeGuard](https://github.com/james-d12/CodeGuard),
+and coverage collection against the target repository (skipping any step it has no evidence for -
+e.g. CodeGuard not being installed - rather than crashing), applies a quality profile, and reports
+a pass/fail gate result. Sonar and Stryker executors aren't implemented yet - see
+[`CLAUDE.md`](CLAUDE.md) for the current scope and how to add one.
+
+## CLI usage
+
+If you've installed the tool, run commands directly as `coderail <command>`. From a checkout of
+this repo, use `dotnet run --project src/CodeRail.Cli -- <command>` instead.
+
+| Command | Description |
+|---|---|
+| `validate` | Run the validation pipeline (build, test, CodeGuard, coverage) against a repository and report a pass/fail quality gate |
+
+| Option | Meaning |
+|---|---|
+| `--path` | Repository root to validate (default: current directory) |
+| `--profile` | Path to a validation profile YAML file (default: the built-in `dotnet-default` profile) |
+| `--format` | `console` (default) or `json` |
+| `--output` | File to write the report to (default: stdout) |
+| `--verbosity` | Minimum log level written to stderr: `debug`, `information` (default), `warning`, `error`, `critical` |
+
+Examples (installed tool):
 
 ```bash
-dotnet run --project src/CodeRail.Cli -- validate --path <repo>
+coderail validate --path .
+coderail validate --path . --format json --output report.json
+coderail validate --path . --profile my-profile.yml
 ```
 
-which runs `dotnet build`, `dotnet test`, [CodeGuard](https://github.com/james-d12/CodeGuard), and
-coverage collection against the target repository (skipping any step it has no evidence for -
-e.g. CodeGuard not being installed - rather than crashing), applies a quality profile, and prints
-(or, with `--format json`, emits) a pass/fail gate result. Exit code 0 means the gate passed.
+Examples (from a checkout of this repo):
 
 ```bash
-# override the built-in default profile, emit JSON instead of console output
-dotnet run --project src/CodeRail.Cli -- validate --path <repo> --profile my-profile.yml --format json
+dotnet run --project src/CodeRail.Cli -- validate --path .
+dotnet run --project src/CodeRail.Cli -- validate --path . --format json --output report.json
 ```
 
-Sonar and Stryker executors aren't implemented yet - see [`CLAUDE.md`](CLAUDE.md) for the current
-scope and how to add one.
+Exit code is `0` if and only if the gate passed - this is the contract an AI agent's repair loop
+or a CI job's pass/fail check should rely on.
+
+### Sample output
+
+```
+QUALITY GATE: FAILED
+
+Build: PASS
+Test: FAIL
+CodeGuard: PASS
+Coverage: PASS
+
+Blocking findings:
+- 2 test(s) failed (CalculatorTests.Add_NegativeNumbers_ReturnsSum)
+
+Action required:
+Fix the findings above, then re-run `coderail validate`.
+```
+
+### Writing a validation profile
+
+A validation profile is YAML that picks which steps run and the thresholds each one is checked
+against. This is the built-in `dotnet-default` profile
+(`src/CodeRail.Core/Configuration/Profiles/dotnet-default.yml`):
+
+```yaml
+profile: dotnet-default
+
+validation:
+  - build
+  - test
+  - codeguard
+  - coverage
+
+quality:
+  test:
+    allowFailures: 0
+  codeGuard:
+    errorCount: 0
+    criticalCount: 0
+```
+
+`validation` is the ordered list of steps to run (`build`, `test`, `codeguard`, `coverage`) -
+`build` failing short-circuits the rest. `quality` sets the thresholds each step's evidence is
+checked against; a step omitted from `quality` still runs and reports its findings, it just
+doesn't block the gate on its own:
+
+| Key | Meaning | If omitted |
+|---|---|---|
+| `test.allowFailures` | Number of failing tests tolerated | `0` - any failure blocks |
+| `codeGuard.errorCount` | Number of CodeGuard error-severity findings tolerated | `0` |
+| `codeGuard.criticalCount` | Number of CodeGuard critical-severity findings tolerated | `0` |
+| `coverage.minimum` | Minimum required line coverage percentage (0-100) | not enforced - the number is still reported |
+
+Point `coderail validate` at a custom profile with `--profile my-profile.yml`.
 
 ## Building
 
