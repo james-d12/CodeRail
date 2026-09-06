@@ -42,4 +42,34 @@ public class DotnetTestExecutorTests
         Assert.Equal("test-failure", finding.Type);
         Assert.Contains("AlwaysFails", finding.Message);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ReportsPassed_WithInfoFinding_WhenTargetHasNoTestProjects()
+    {
+        var projectPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "NoTestsProject", "NoTestsProject.csproj");
+        var context = new ToolContext(AppContext.BaseDirectory, [projectPath]);
+
+        var result = await _executor.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(ValidationStatus.Passed, result.Status);
+        Assert.Equal(0, result.Metrics["total"]);
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("no-tests-found", finding.Type);
+        Assert.Equal(Severity.Info, finding.Severity);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReportsFailed_WhenTargetFailsToBuild()
+    {
+        var projectPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "BrokenTestProject", "BrokenTestProject.csproj");
+        var context = new ToolContext(AppContext.BaseDirectory, [projectPath]);
+
+        var result = await _executor.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(ValidationStatus.Failed, result.Status);
+        Assert.Equal(0, result.Metrics["total"]);
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("test-run-failure", finding.Type);
+        Assert.Equal(Severity.Error, finding.Severity);
+    }
 }

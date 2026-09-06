@@ -44,14 +44,26 @@ public sealed class DotnetTestExecutor(IProcessRunner processRunner, ILogger<Dot
 
                 if (trxFiles.Count == 0)
                 {
-                    // No TRX means the run never got as far as executing tests (e.g. a compile
-                    // error) rather than tests genuinely failing - surface it as its own finding
-                    // instead of silently reporting zero tests.
-                    infrastructureFailure = true;
-                    var message = result.TimedOut
-                        ? $"dotnet test timed out after {Timeout}"
-                        : OutputTail.Last(result.StandardOutput + Environment.NewLine + result.StandardError);
-                    findings.Add(new Finding("test-run-failure", Severity.Error, message, isRepoRoot ? null : target, null, null));
+                    if (result.TimedOut || result.ExitCode != 0)
+                    {
+                        // No TRX plus a timeout or non-zero exit means the run never got as far
+                        // as executing tests (e.g. a compile error) rather than tests genuinely
+                        // failing - surface it as its own finding instead of silently reporting
+                        // zero tests.
+                        infrastructureFailure = true;
+                        var message = result.TimedOut
+                            ? $"dotnet test timed out after {Timeout}"
+                            : OutputTail.Last(result.StandardOutput + Environment.NewLine + result.StandardError);
+                        findings.Add(new Finding("test-run-failure", Severity.Error, message, isRepoRoot ? null : target, null, null));
+                    }
+                    else
+                    {
+                        // No TRX with a clean (zero) exit means dotnet test ran successfully but
+                        // this target has no test projects to run (e.g. a solution/project made
+                        // up entirely of libraries) - not a failure, just nothing to report.
+                        findings.Add(new Finding("no-tests-found", Severity.Info, "No test projects found.", isRepoRoot ? null : target, null, null));
+                    }
+
                     continue;
                 }
 
