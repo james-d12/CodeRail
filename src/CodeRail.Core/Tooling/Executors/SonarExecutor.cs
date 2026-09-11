@@ -34,6 +34,12 @@ namespace CodeRail.Tooling.Executors;
 /// "protect secrets") - it's read from the environment and passed to the scanner via
 /// <c>SONAR_TOKEN</c> in <see cref="IProcessRunner"/>'s <c>environmentVariables</c> parameter,
 /// never interpolated into a logged command-line argument string.
+/// <para/>
+/// Its own <c>build</c> must stay a real build - the scanner only collects analysis data from a
+/// compile that happens between <c>begin</c> and <c>end</c>, so it never takes
+/// <c>--no-build</c> and ignores <see cref="ToolContext.SkipBuild"/>. The <c>test</c> call right
+/// after it always takes <c>--no-build</c> though: it runs immediately after that build, inside
+/// this same <c>ExecuteAsync</c>, so there is never anything left to compile.
 /// </remarks>
 public sealed class SonarExecutor(
     IProcessRunner processRunner,
@@ -85,7 +91,7 @@ public sealed class SonarExecutor(
 
             var build = await processRunner.RunAsync("dotnet", "build", context.RepoRoot, timeout: ScannerTimeout, cancellationToken: cancellationToken);
             var test = await processRunner.RunAsync(
-                "dotnet", "test --collect:\"XPlat Code Coverage\"", context.RepoRoot, timeout: ScannerTimeout, cancellationToken: cancellationToken);
+                "dotnet", "test --collect:\"XPlat Code Coverage\" --no-build", context.RepoRoot, timeout: ScannerTimeout, cancellationToken: cancellationToken);
             _ = build;
             _ = test; // Build/test failures don't abort the scan - `end` still uploads whatever analysis data was gathered, and CodeRail's own `build`/`test` steps already reported these results earlier in the pipeline.
 

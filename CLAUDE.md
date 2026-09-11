@@ -115,18 +115,28 @@ its type-level remarks if it misbehaves.
   `newCodeLineCoverage` metric alongside the existing whole-repository one. `Minimum` and
   `NewCodeMinimum` are evaluated independently in `PolicyEvaluator`. Extending the same
   `ToolContext.Changes` to CodeGuard/Sonar/Stryker findings ("new issues only") is still open.
-- **Executors self-restore/self-build.** `DotnetBuildExecutor`/`DotnetTestExecutor`/
-  `CoverageExecutor` run a plain `dotnet build`/`dotnet test` (implicit restore), not the design
-  doc's illustrative `--no-restore`/`--no-build` - CodeRail validates arbitrary target
-  repositories it has no guarantee were pre-restored by the caller. Known inefficiency:
-  `DotnetTestExecutor` and `CoverageExecutor` each redo their own restore+build+test rather than
-  sharing one incremental build; acceptable for MVP, worth revisiting once the engine can share
-  intermediate output between steps. Because of this, `ValidationEngine` only runs `codeguard`
-  concurrently with the rest of the pipeline (it never invokes `dotnet` and has no dependency on
-  `build`) - `test`/`coverage`/`sonar`/`stryker` all self-restore/self-build against the same
-  shared `obj`/`bin` under the repo root, so running any two of *those* concurrently today would
-  risk MSBuild file-lock collisions; giving each an isolated build so they can run concurrently
-  too is the natural next step once restore/build is shared across steps.
+- **The `build` step self-restores; steps after it reuse its compile.** `DotnetBuildExecutor` runs
+  a plain `dotnet build` (implicit restore) rather than the design doc's illustrative
+  `--no-restore` - CodeRail validates arbitrary target repositories it has no guarantee were
+  pre-restored by the caller, and nothing has run before it. Once it passes, `ValidationEngine`
+  sets `ToolContext.SkipBuild` on the context it passes to every *later* sequential step, and
+  `DotnetTestExecutor`/`CoverageExecutor` add `--no-build` (which implies `--no-restore`, so never
+  pass both) instead of redoing that restore+compile - worth ~2s per invocation on this repo, ×2
+  per run. `SkipBuild` defaults to false, so a profile with no `build` step - or with `test`
+  declared before `build` - still self-restores/self-builds exactly as before; every executor that
+  can't use it (`codeguard`, `stryker`, and Sonar's own scanner build) just ignores the field, the
+  same way executors already ignore `Changes`/`Sonar`. `SonarExecutor`'s internal `test` call takes
+  `--no-build` unconditionally since it always follows Sonar's own build inside one `ExecuteAsync`;
+  its `build` call must never take it (the scanner only sees a compile between `begin` and `end`).
+  **Still open:** `test` and `coverage` each execute the whole suite - that duplicate *execution*,
+  not the compile, is now the dominant cost. The fix is merging them into a single `dotnet test`
+  emitting both TRX and Cobertura, **not** running them concurrently: `coverlet.collector`
+  instruments by rewriting the assemblies in `bin` in place and restoring them afterwards
+  (`BackupOriginalModule`/`RestoreOriginalModule` in `coverlet.core`), so overlapping `coverage`
+  with a plain `test` run races a testhost holding those same files. `ValidationEngine` therefore
+  still runs only `codeguard` concurrently (it never invokes `dotnet` at all); `sonar`/`stryker`
+  still self-build against the shared `obj`/`bin` and would need isolated build output before they
+  could overlap anything.
 - **`CodeGuardExecutor`/`CoverageExecutor` degrade to `PartiallyEvaluated`, not a hard failure**,
   when `codeguard` isn't on PATH, produces non-JSON output (e.g. its own pre-flight rule
   validation failing and printing a plain-text report instead, ignoring `--format`), or no

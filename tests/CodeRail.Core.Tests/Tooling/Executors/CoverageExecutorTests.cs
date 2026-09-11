@@ -85,6 +85,30 @@ public class CoverageExecutorTests
         Assert.Contains("coverlet.collector", finding.Message);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_ReusesAnEarlierBuild_OnlyWhenTheContextSaysOneAlreadyRan(bool skipBuild)
+    {
+        var runner = StubProcessRunner.Returning(new ProcessResult(0, "", "", TimeSpan.FromMilliseconds(5), false));
+        var executor = new CoverageExecutor(runner, NullLogger<CoverageExecutor>.Instance);
+
+        await executor.ExecuteAsync(Context with { SkipBuild = skipBuild }, CancellationToken.None);
+
+        var call = Assert.Single(runner.Calls);
+        Assert.Equal("dotnet", call.Executable);
+        if (skipBuild)
+        {
+            // --no-build implies --no-restore, so one flag covers both.
+            Assert.EndsWith(" --no-build", call.Arguments);
+            Assert.DoesNotContain("--no-restore", call.Arguments);
+        }
+        else
+        {
+            Assert.DoesNotContain("--no-build", call.Arguments);
+        }
+    }
+
     private static void WriteFakeCoberturaReport(string arguments, int linesCovered, int linesValid, int branchesCovered, int branchesValid)
     {
         var reportDirectory = FakeReportDirectory(arguments);

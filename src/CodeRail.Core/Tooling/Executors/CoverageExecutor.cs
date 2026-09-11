@@ -15,10 +15,14 @@ namespace CodeRail.Tooling.Executors;
 /// <remarks>
 /// Whether a number is "good enough" is a policy decision, not this executor's - see
 /// <c>PolicyEvaluator</c> - so this always reports <see cref="ValidationStatus.Passed"/> when
-/// collection itself succeeded, regardless of the coverage percentage. Also duplicates the test
-/// run <see cref="DotnetTestExecutor"/> already did (docs' "fast vs. expensive" tiering, §14,
-/// treats coverage as a "medium loop" concern anyway) - combining them into a single invocation
-/// is a documented follow-up once the engine can share intermediate output between steps.
+/// collection itself succeeded, regardless of the coverage percentage. Adds <c>--no-build</c>
+/// (which implies <c>--no-restore</c>) when <see cref="ToolContext.SkipBuild"/> says a <c>build</c>
+/// step already compiled these same targets, so this no longer redoes that compile - but it still
+/// re-executes the test suite <see cref="DotnetTestExecutor"/> already ran (docs' "fast vs.
+/// expensive" tiering, §14, treats coverage as a "medium loop" concern anyway). Combining the two
+/// into a single <c>dotnet test</c> invocation that emits both TRX and Cobertura is the remaining
+/// follow-up; they can't simply run concurrently, because coverlet rewrites the assemblies in
+/// <c>bin</c> in place (see <c>ValidationEngine</c>'s notes).
 /// </remarks>
 public sealed class CoverageExecutor(IProcessRunner processRunner, ILogger<CoverageExecutor> logger) : IToolExecutor
 {
@@ -44,7 +48,8 @@ public sealed class CoverageExecutor(IProcessRunner processRunner, ILogger<Cover
             try
             {
                 var arguments = (isRepoRoot ? "test" : $"test \"{target}\"") +
-                    $" --collect:\"XPlat Code Coverage\" --results-directory \"{resultsDirectory}\"";
+                    $" --collect:\"XPlat Code Coverage\" --results-directory \"{resultsDirectory}\"" +
+                    (context.SkipBuild ? " --no-build" : "");
 
                 logger.LogInformation("Collecting coverage for {Target}", target);
                 var result = await processRunner.RunAsync("dotnet", arguments, context.RepoRoot, timeout: Timeout, cancellationToken: cancellationToken);

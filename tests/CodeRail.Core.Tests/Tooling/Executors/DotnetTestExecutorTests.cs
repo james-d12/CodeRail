@@ -72,4 +72,30 @@ public class DotnetTestExecutorTests
         Assert.Equal("test-run-failure", finding.Type);
         Assert.Equal(Severity.Error, finding.Severity);
     }
+
+    // Stubbed rather than run for real: these assert the command line, and a stubbed run produces
+    // no TRX, so the result lands on the harmless "no-tests-found" path.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteAsync_ReusesAnEarlierBuild_OnlyWhenTheContextSaysOneAlreadyRan(bool skipBuild)
+    {
+        var runner = StubProcessRunner.Returning(new ProcessResult(0, "", "", TimeSpan.FromMilliseconds(5), false));
+        var executor = new DotnetTestExecutor(runner, NullLogger<DotnetTestExecutor>.Instance);
+
+        await executor.ExecuteAsync(new ToolContext("/repo", [], SkipBuild: skipBuild), CancellationToken.None);
+
+        var call = Assert.Single(runner.Calls);
+        Assert.Equal("dotnet", call.Executable);
+        if (skipBuild)
+        {
+            // --no-build implies --no-restore, so one flag covers both.
+            Assert.EndsWith(" --no-build", call.Arguments);
+            Assert.DoesNotContain("--no-restore", call.Arguments);
+        }
+        else
+        {
+            Assert.DoesNotContain("--no-build", call.Arguments);
+        }
+    }
 }

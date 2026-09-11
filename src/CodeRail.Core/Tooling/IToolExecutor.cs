@@ -28,5 +28,11 @@ public interface IToolExecutor
 /// profile's <c>quality.sonar.projectKey</c>. Null means <c>SonarExecutor</c> has nothing to
 /// connect to and degrades to <see cref="ValidationStatus.PartiallyEvaluated"/> - every other
 /// executor ignores this field.</param>
+/// <param name="SkipBuild">True once a <c>build</c> step has passed earlier in <i>this</i> run, so
+/// a compile of exactly these <paramref name="SolutionPaths"/> is already on disk and downstream
+/// executors can reuse it instead of redoing it (<c>dotnet test --no-build</c>, which also implies
+/// <c>--no-restore</c>). Set by <c>ValidationEngine</c>; false - every executor self-restores and
+/// self-builds, as it must for a profile with no <c>build</c> step at all.</param>
 public sealed record ToolContext(
-    string RepoRoot, IReadOnlyList<string> SolutionPaths, ChangeSet? Changes = null, SonarConfig? Sonar = null);
+    string RepoRoot, IReadOnlyList<string> SolutionPaths, ChangeSet? Changes = null, SonarConfig? Sonar = null,
+    bool SkipBuild = false);

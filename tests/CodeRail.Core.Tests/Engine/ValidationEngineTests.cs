@@ -117,6 +117,52 @@ public class ValidationEngineTests
     }
 
     [Fact]
+    public async Task RunAsync_TellsStepsAfterAPassingBuild_ThatTheBuildOutputIsAlreadyOnDisk()
+    {
+        var build = FakeToolExecutor.Passing(ValidationSteps.Build);
+        var test = FakeToolExecutor.Passing(ValidationSteps.Test);
+        var coverage = FakeToolExecutor.Passing(ValidationSteps.Coverage);
+        var engine = CreateEngine(build, test, coverage);
+
+        await engine.RunAsync(
+            Context, [ValidationSteps.Build, ValidationSteps.Test, ValidationSteps.Coverage], DefaultQuality, CancellationToken.None);
+
+        Assert.False(build.LastContext!.SkipBuild);
+        Assert.True(test.LastContext!.SkipBuild);
+        Assert.True(coverage.LastContext!.SkipBuild);
+    }
+
+    [Fact]
+    public async Task RunAsync_LeavesStepsSelfBuilding_WhenTheProfileHasNoBuildStep()
+    {
+        var test = FakeToolExecutor.Passing(ValidationSteps.Test);
+        var coverage = FakeToolExecutor.Passing(ValidationSteps.Coverage);
+        var engine = CreateEngine(test, coverage);
+
+        await engine.RunAsync(Context, [ValidationSteps.Test, ValidationSteps.Coverage], DefaultQuality, CancellationToken.None);
+
+        // Nothing compiled these targets in this run, so --no-build would fail - every executor
+        // has to keep self-restoring/self-building, which is what every existing custom profile
+        // (and all three integration-test profiles) relies on.
+        Assert.False(test.LastContext!.SkipBuild);
+        Assert.False(coverage.LastContext!.SkipBuild);
+    }
+
+    [Fact]
+    public async Task RunAsync_LeavesCodeGuardSelfBuilding_EvenWhenBuildPasses()
+    {
+        var build = FakeToolExecutor.Passing(ValidationSteps.Build);
+        var codeGuard = FakeToolExecutor.Passing(ValidationSteps.CodeGuard);
+        var engine = CreateEngine(build, codeGuard);
+
+        await engine.RunAsync(Context, [ValidationSteps.Build, ValidationSteps.CodeGuard], DefaultQuality, CancellationToken.None);
+
+        // CodeGuard starts before build finishes, so it can never be told the build output is
+        // ready - it doesn't invoke dotnet at all, so it has nothing to skip either.
+        Assert.False(codeGuard.LastContext!.SkipBuild);
+    }
+
+    [Fact]
     public async Task RunAsync_ReturnsPassedGate_ForAnEmptyStepList()
     {
         var engine = CreateEngine();
