@@ -12,11 +12,13 @@ namespace CodeRail.Tooling.Executors;
 /// <remarks>
 /// Deliberately runs a plain <c>dotnet build</c> (implicit restore) rather than the doc's
 /// illustrative <c>dotnet build --no-restore</c>: CodeRail validates arbitrary target
-/// repositories that it has no guarantee were pre-restored by the caller, so each executor
-/// self-contains restore + build rather than assuming a prior step already ran it. This is a
-/// known inefficiency when chained with <see cref="DotnetTestExecutor"/> (and, later, a
-/// coverage executor) - each currently redoes its own restore/build - worth revisiting once the
-/// engine can share a single incremental build across steps.
+/// repositories that it has no guarantee were pre-restored by the caller, so the build step
+/// self-contains restore + build rather than assuming anything ran before it. The steps *after*
+/// it don't have to: once this one passes, <c>ValidationEngine</c> sets
+/// <see cref="ToolContext.SkipBuild"/> and <see cref="DotnetTestExecutor"/>/
+/// <see cref="CoverageExecutor"/> reuse this compile via <c>dotnet test --no-build</c> instead of
+/// redoing it. What's left to share is the test *execution* itself - `test` and `coverage` still
+/// run the suite once each.
 /// </remarks>
 public sealed class DotnetBuildExecutor(IProcessRunner processRunner, ILogger<DotnetBuildExecutor> logger) : IToolExecutor
 {

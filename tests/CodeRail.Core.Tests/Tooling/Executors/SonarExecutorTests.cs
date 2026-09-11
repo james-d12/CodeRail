@@ -171,6 +171,12 @@ public class SonarExecutorTests
             Assert.All(runner.Calls, call => Assert.DoesNotContain("s3cr3t", call.Arguments));
             Assert.Contains(runner.Calls, call => call.Arguments.Contains("/k:\"my-project\"") && call.Arguments.Contains("/o:\"my-org\""));
 
+            // The scanner only sees a compile that happens between begin and end, so Sonar's own
+            // build must stay a real build - but the test run right after it has nothing left to
+            // compile, so it always skips its own.
+            Assert.Equal("build", runner.Calls[1].Arguments);
+            Assert.EndsWith(" --no-build", runner.Calls[2].Arguments);
+
             // Nor in any HTTP request URI.
             Assert.All(handler.Requests, r => Assert.DoesNotContain("s3cr3t", r.RequestUri!.ToString()));
             Assert.All(handler.Requests, r => Assert.Equal("Bearer", r.Headers.Authorization?.Scheme));

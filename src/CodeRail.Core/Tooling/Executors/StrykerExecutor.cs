@@ -22,6 +22,11 @@ namespace CodeRail.Tooling.Executors;
 /// <see cref="ValidationStatus.PartiallyEvaluated"/> rather than a hard failure - an environment gap
 /// (Stryker not installed) shouldn't block the repair loop the same way an actual code defect
 /// should.
+/// <para/>
+/// Unlike <see cref="DotnetTestExecutor"/>/<see cref="CoverageExecutor"/>, this ignores
+/// <see cref="ToolContext.SkipBuild"/>: <c>dotnet stryker --help</c> exposes no restore- or
+/// build-skip flag of any kind (checked against the installed CLI), because Stryker.NET drives its
+/// own build of the mutated sources as part of mutation testing. There's nothing to shortcut.
 /// </remarks>
 public sealed class StrykerExecutor(IProcessRunner processRunner, ILogger<StrykerExecutor> logger) : IToolExecutor
 {

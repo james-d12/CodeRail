@@ -9,6 +9,7 @@ internal sealed class FakeToolExecutor(string name, Task<ToolResult> result) : I
 {
     public int InvocationCount { get; private set; }
     public CancellationToken? LastCancellationToken { get; private set; }
+    public ToolContext? LastContext { get; private set; }
 
     public string Name => name;
 
@@ -16,6 +17,7 @@ internal sealed class FakeToolExecutor(string name, Task<ToolResult> result) : I
     {
         InvocationCount++;
         LastCancellationToken = cancellationToken;
+        LastContext = context;
         cancellationToken.ThrowIfCancellationRequested();
         return result;
     }

@@ -8,8 +8,10 @@ namespace CodeRail.Tooling.Executors;
 /// <summary>
 /// Runs <c>dotnet test</c> against each of the context's solutions, parses the resulting TRX
 /// file(s), and converts failures into <see cref="Finding"/>s. See
-/// <c>docs/HIGH_LEVEL_PLAN.md</c> §9.2. See <see cref="DotnetBuildExecutor"/>'s remarks for why
-/// this runs a plain (self-restoring/building) <c>dotnet test</c> rather than <c>--no-build</c>.
+/// <c>docs/HIGH_LEVEL_PLAN.md</c> §9.2. Adds <c>--no-build</c> (which implies <c>--no-restore</c>)
+/// when <see cref="ToolContext.SkipBuild"/> says a <c>build</c> step already compiled these same
+/// targets in this run; otherwise it self-restores and self-builds, so a profile without a
+/// <c>build</c> step still works - see <see cref="DotnetBuildExecutor"/>'s remarks.
 /// </summary>
 public sealed class DotnetTestExecutor(IProcessRunner processRunner, ILogger<DotnetTestExecutor> logger) : IToolExecutor
 {
@@ -32,7 +34,8 @@ public sealed class DotnetTestExecutor(IProcessRunner processRunner, ILogger<Dot
             try
             {
                 var arguments = (isRepoRoot ? "test" : $"test \"{target}\"") +
-                    $" --logger \"trx;LogFileName=results.trx\" --results-directory \"{resultsDirectory}\"";
+                    $" --logger \"trx;LogFileName=results.trx\" --results-directory \"{resultsDirectory}\"" +
+                    (context.SkipBuild ? " --no-build" : "");
 
                 logger.LogInformation("Testing {Target}", target);
                 var result = await processRunner.RunAsync("dotnet", arguments, context.RepoRoot, timeout: Timeout, cancellationToken: cancellationToken);
