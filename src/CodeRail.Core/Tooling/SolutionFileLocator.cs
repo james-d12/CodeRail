@@ -7,12 +7,22 @@ namespace CodeRail.Tooling;
 /// directories. Ported from CodeGuard's <c>SolutionFileLocator</c> (same problem, same fix: a
 /// nested worktree checkout under <c>.claude/worktrees/</c> would otherwise be discovered as a
 /// second copy of the same repo).
+///
+/// Also skips <c>Fixtures</c> directories - this repo's own convention (see
+/// <c>tests/*/Fixtures/</c> and its CLAUDE.md) for small on-disk test projects that are
+/// deliberately kept out of the repository's real solution(s), including ones that don't build
+/// or have no test projects at all. Discovering and independently validating them as if they
+/// were first-class solutions produces bogus results (confirmed dogfooding against CodeGuard,
+/// which follows the same convention: its
+/// <c>tests/CodeGuard.IntegrationTests/Fixtures/SimpleDomainSolution/*.sln</c> fixture has no
+/// test projects, which <see cref="Executors.DotnetTestExecutor"/> would otherwise report as an
+/// infrastructure failure).
 /// </summary>
 public static class SolutionFileLocator
 {
     private static readonly HashSet<string> ExcludedDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "bin", "obj", ".git", ".vs", ".idea", "node_modules", ".claude"
+        "bin", "obj", ".git", ".vs", ".idea", "node_modules", ".claude", "Fixtures"
     };
 
     public static IReadOnlyList<string> Resolve(string repoRoot, IReadOnlyList<string> explicitSolutionPaths, ILogger? logger = null)

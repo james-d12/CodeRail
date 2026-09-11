@@ -121,7 +121,12 @@ its type-level remarks if it misbehaves.
   repositories it has no guarantee were pre-restored by the caller. Known inefficiency:
   `DotnetTestExecutor` and `CoverageExecutor` each redo their own restore+build+test rather than
   sharing one incremental build; acceptable for MVP, worth revisiting once the engine can share
-  intermediate output between steps.
+  intermediate output between steps. Because of this, `ValidationEngine` only runs `codeguard`
+  concurrently with the rest of the pipeline (it never invokes `dotnet` and has no dependency on
+  `build`) - `test`/`coverage`/`sonar`/`stryker` all self-restore/self-build against the same
+  shared `obj`/`bin` under the repo root, so running any two of *those* concurrently today would
+  risk MSBuild file-lock collisions; giving each an isolated build so they can run concurrently
+  too is the natural next step once restore/build is shared across steps.
 - **`CodeGuardExecutor`/`CoverageExecutor` degrade to `PartiallyEvaluated`, not a hard failure**,
   when `codeguard` isn't on PATH, produces non-JSON output (e.g. its own pre-flight rule
   validation failing and printing a plain-text report instead, ignoring `--format`), or no

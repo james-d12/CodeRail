@@ -42,6 +42,29 @@ public class SolutionFileLocatorTests
     }
 
     [Fact]
+    public void Resolve_SkipsFixturesDirectories()
+    {
+        var root = Directory.CreateTempSubdirectory("coderail-locator-").FullName;
+        try
+        {
+            var nested = Directory.CreateDirectory(Path.Combine(root, "nested"));
+            File.WriteAllText(Path.Combine(nested.FullName, "Nested.sln"), string.Empty);
+
+            var fixtures = Directory.CreateDirectory(Path.Combine(root, "tests", "Fixtures", "SomeFixture"));
+            File.WriteAllText(Path.Combine(fixtures.FullName, "ShouldBeSkipped.sln"), string.Empty);
+
+            var resolved = Tooling.SolutionFileLocator.Resolve(root, []);
+
+            Assert.Single(resolved);
+            Assert.EndsWith("Nested.sln", resolved[0]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Resolve_Throws_WhenExplicitSolutionDoesNotExist()
     {
         var root = Directory.CreateTempSubdirectory("coderail-locator-").FullName;
