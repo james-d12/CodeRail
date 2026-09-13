@@ -94,8 +94,11 @@ public static class ValidateCommand
                 var engine = BuildEngine(loggerFactory, processRunner, httpClient);
                 var gate = await engine.RunAsync(context, profile.Validation, profile.Quality, cancellationToken);
 
-                var writer = CreateWriter(parseResult.GetValue(formatOption)!);
                 var outputPath = parseResult.GetValue(outputOption);
+                var format = parseResult.GetValue(formatOption)!;
+                var useColor = format == "console" && outputPath is null && !Console.IsOutputRedirected
+                    && Environment.GetEnvironmentVariable("NO_COLOR") is null;
+                var writer = CreateWriter(format, useColor);
 
                 TextWriter destination = outputPath is null ? Console.Out : new StreamWriter(outputPath);
                 try
@@ -140,10 +143,10 @@ public static class ValidateCommand
         return new ValidationEngine(executors, new PolicyEvaluator(), loggerFactory.CreateLogger<ValidationEngine>());
     }
 
-    private static IGateResultWriter CreateWriter(string format) => format switch
+    private static IGateResultWriter CreateWriter(string format, bool useColor) => format switch
     {
         "json" => new JsonGateResultWriter(),
         "sarif" => new SarifGateResultWriter(),
-        _ => new ConsoleGateResultWriter()
+        _ => new ConsoleGateResultWriter(useColor)
     };
 }
