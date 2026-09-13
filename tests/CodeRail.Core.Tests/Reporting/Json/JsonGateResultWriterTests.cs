@@ -31,6 +31,11 @@ public class JsonGateResultWriterTests
         Assert.Equal(1, root.GetProperty("tools")[0].GetProperty("metrics").GetProperty("solutionsBuilt").GetInt32());
         Assert.Equal("error", root.GetProperty("blockingFindings")[0].GetProperty("severity").GetString());
         Assert.Equal("CS0103", root.GetProperty("blockingFindings")[0].GetProperty("message").GetString());
+
+        var summary = root.GetProperty("summary");
+        Assert.Equal(1, summary.GetProperty("total").GetInt32());
+        Assert.Equal(1, summary.GetProperty("error").GetInt32());
+        Assert.Equal(0, summary.GetProperty("critical").GetInt32());
     }
 
     [Fact]

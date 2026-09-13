@@ -25,8 +25,15 @@ public sealed class CodeGuardExecutor(IProcessRunner processRunner, ILogger<Code
         ProcessResult result;
         try
         {
+            // Forward the same solution(s) CodeRail's own SolutionFileLocator already resolved
+            // (which excludes Fixtures/bin/obj/etc. - see its remarks) instead of letting codeguard
+            // auto-discover independently: recent codeguard versions hard-fail when their own
+            // auto-discovery under --path finds more than one .sln/.slnx, requiring --solution
+            // (repeatable) to disambiguate. Passing it here avoids that failure whenever CodeRail
+            // already knows unambiguously which solution(s) are in scope.
+            var solutionArgs = string.Concat(context.SolutionPaths.Select(path => $" --solution \"{path}\""));
             result = await processRunner.RunAsync(
-                "codeguard", $"validate --path \"{context.RepoRoot}\" --format json",
+                "codeguard", $"validate --path \"{context.RepoRoot}\" --format json{solutionArgs}",
                 context.RepoRoot, timeout: Timeout, cancellationToken: cancellationToken);
         }
         catch (Win32Exception ex)

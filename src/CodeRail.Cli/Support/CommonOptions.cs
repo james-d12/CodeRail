@@ -20,12 +20,13 @@ public static class CommonOptions
         var option = new Option<string>("--verbosity")
         {
             Description = "Minimum log level written to stderr: debug, information, warning, error, or " +
-                "critical (case-insensitive). Default: information.",
-            DefaultValueFactory = _ => "information"
+                "critical (case-insensitive). Default: warning - use 'information' or 'debug' to see " +
+                "per-step progress as each validation step runs.",
+            DefaultValueFactory = _ => "warning"
         };
         option.Validators.Add(result =>
         {
-            var value = result.GetValueOrDefault<string>() ?? "information";
+            var value = result.GetValueOrDefault<string>() ?? "warning";
             try
             {
                 CliLoggerFactory.ParseVerbosity(value);

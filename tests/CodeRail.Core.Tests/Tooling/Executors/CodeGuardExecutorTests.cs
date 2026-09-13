@@ -52,6 +52,33 @@ public class CodeGuardExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_PassesEachResolvedSolutionAsARepeatedSolutionFlag()
+    {
+        const string json = """{ "status": "passed", "rulesEvaluated": 1, "rulesPassed": 1, "rulesFailed": 0, "rulesErrored": 0 }""";
+        var runner = StubProcessRunner.Returning(new ProcessResult(0, json, "", TimeSpan.FromMilliseconds(5), false));
+        var executor = new CodeGuardExecutor(runner, NullLogger<CodeGuardExecutor>.Instance);
+        var context = new ToolContext("/repo", ["/repo/A.sln", "/repo/B.sln"]);
+
+        await executor.ExecuteAsync(context, CancellationToken.None);
+
+        var arguments = Assert.Single(runner.Calls).Arguments;
+        Assert.Contains("--solution \"/repo/A.sln\"", arguments);
+        Assert.Contains("--solution \"/repo/B.sln\"", arguments);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OmitsSolutionFlag_WhenNoSolutionsWereResolved()
+    {
+        const string json = """{ "status": "passed", "rulesEvaluated": 1, "rulesPassed": 1, "rulesFailed": 0, "rulesErrored": 0 }""";
+        var runner = StubProcessRunner.Returning(new ProcessResult(0, json, "", TimeSpan.FromMilliseconds(5), false));
+        var executor = new CodeGuardExecutor(runner, NullLogger<CodeGuardExecutor>.Instance);
+
+        await executor.ExecuteAsync(Context, CancellationToken.None);
+
+        Assert.DoesNotContain("--solution", Assert.Single(runner.Calls).Arguments);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ReturnsPartiallyEvaluated_WhenCodeGuardIsNotInstalled()
     {
         var runner = StubProcessRunner.Throwing(new Win32Exception("No such file or directory"));
